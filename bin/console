@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-docker exec -it jepsen-control bash
+docker exec -it jepsen_control bash

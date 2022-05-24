@@ -101,6 +101,179 @@ fi
 exists ssh-keygen || { ERROR "Please install ssh-keygen (apt-get install openssh-client)"; exit 1; }
 exists perl || { ERROR "Please install perl (apt-get install perl)"; exit 1; }
 
+# always set JEPSEN_ROOT
+if [ ! "$JEPSEN_ROOT" ]; then
+    JEPSEN_ROOT="$(pwd)"
+    export JEPSEN_ROOT
+    INFO "JEPSEN_ROOT is not set, defaulting to: $JEPSEN_ROOT"
+fi
+
+# unwinding to individual docker commands
+
+exists docker ||
+    { ERROR "Please install docker (https://docs.docker.com/engine/install/)";
+      exit 1; }
+
+# stop containers
+INFO "stop containers"
+docker stop jepsen_control || INFO "jepsen_control container not running" 
+for ((n=1;n<=NODE_COUNT;n++)); do
+    docker stop jepsen_n${n} || INFO "jepsen_n${n} container not running"
+done
+
+# rm containers
+INFO "rm containers"
+docker rm --force --volumes jepsen_control || INFO "jepsen_control container doesn't exist"
+for ((n=1;n<=NODE_COUNT;n++)); do
+    docker rm --force --volumes jepsen_n${n} || INFO "jepsen_n${n} container doesn't exist"
+done
+
+# rm network
+INFO "rm network"
+docker network rm jepsen_network || INFO "jepsen_network network doesn't exist"
+
+# rm volumes
+INFO "rm volume"
+docker volume rm jepsen_shared || INFO "jepsen_shared volume doesn't exist"
+
+# build control image
+INFO "building control image"
+pushd "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )/../control"
+docker build --tag jepsen_control .
+popd
+
+# build node image
+INFO "building node image"
+pushd "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )/../node"
+docker build --tag jepsen_node .
+popd
+
+# create volume
+INFO "creating volume"
+docker volume create jepsen_shared || { ERROR "failed to create jepsen_shared volume";
+                                        exit 1; }
+
+# create network
+INFO "creating network"
+docker network create jepsen_network || { ERROR "failed to create jepsen_network network";
+                                          exit 1; }
+
+# run images in containers
+
+# TODO?
+#   --cap-add all
+#   --privileged
+# crashes host, needs power cycle
+INFO "Starting control..."
+docker run \
+    --detach \
+    --expose 22 \
+    --expose 8080 \
+    --hostname control \
+    --name jepsen_control \
+    --network jepsen_network \
+    --stop-signal SIGRTMIN+3 \
+    --tmpfs /run:size=100M \
+    --tmpfs /run/lock:size=100M \
+    --tty \
+    --volume jepsen_shared:/var/jepsen/shared \
+    --volume ${JEPSEN_ROOT}:/jepsen:rw \
+    jepsen_control
+
+# TODO?
+#   --cap-add all
+#   --privileged
+# crashes host, needs power cycle
+INFO "Starting nodes..."
+for ((n=1;n<=NODE_COUNT;n++)); do
+    docker run \
+        --cgroupns host \
+        --detach \
+        --env ROOT_PASS=root \
+        --expose 22 \
+        --hostname n${n} \
+        --name jepsen_n${n} \
+        --network jepsen_network \
+        --stop-signal SIGRTMIN+3 \
+        --tmpfs /run:size=100M \
+        --tmpfs /run/lock:size=100M \
+        --tty \
+        --volume /sys/fs/cgroup:/sys/fs/cgroup:rw \
+        --volume jepsen_shared:/var/jepsen/shared \
+        jepsen_node
+done
+
+INFO "sleeping to let docker run --detach bring up all containers"
+sleep 5 
+
+# create ssh keys
+INFO "creating ssh keys in containers"
+docker exec \
+    --tty \
+    jepsen_control \
+    ssh-keygen \
+        -b 4096 \
+        -f /root/.ssh/id_rsa \
+        -t rsa \
+        -N ""
+for ((n=1;n<=NODE_COUNT;n++)); do
+    docker exec \
+        --tty \
+        jepsen_n${n} \
+        ssh-keygen \
+            -b 4096 \
+            -f /root/.ssh/id_rsa \
+            -t rsa \
+            -N ""
+done
+
+# cp control's key to shared location,
+# have all nodes trust it
+INFO "ssh key dance"
+docker exec \
+    --tty \
+    jepsen_control \
+    cp \
+        /root/.ssh/id_rsa.pub \
+        /var/jepsen/shared/control_ssh_id_rsa_pub
+for ((n=1;n<=NODE_COUNT;n++)); do
+docker exec \
+    --tty \
+    jepsen_n${n} \
+    /root/ssh-dance.sh
+done
+
+# make all nodes known_hosts to the control node
+docker exec \
+    --tty \
+    jepsen_control \
+    sh -c "echo > /root/.ssh/known_hosts"
+for ((n=1;n<=NODE_COUNT;n++)); do
+    docker exec \
+        --tty \
+        jepsen_control \
+        sh -c "ssh-keyscan -t rsa n${n} >> /root/.ssh/known_hosts && ssh-keyscan -t ed25519 n${n} >> /root/.ssh/known_hosts"
+done
+
+# root/root on nodes
+INFO "setting root password to root on nodes"
+for ((n=1;n<=NODE_COUNT;n++)); do
+    docker exec \
+        --tty \
+        jepsen_n${n} \
+        bash -c 'echo -e "root\nroot\n" | passwd root'
+done
+
+# each node added itself to shared file on boot
+INFO "creating control:/root/nodes"
+docker exec \
+    --tty \
+    jepsen_control \
+    bash -c "sort -V /var/jepsen/shared/nodes > /root/nodes"
+
+exit 0
+
+
 # Generate SSH keys for the control node
 if [ ! -f ./secret/node.env ]; then
     INFO "Generating key pair"
