@@ -1,22 +1,46 @@
-# See https://github.com/jgoerzen/docker-debian-base
-# See https://hub.docker.com/r/jgoerzen/debian-base-standard
-FROM jgoerzen/debian-base-standard:buster
+FROM jgoerzen/debian-base-standard:bullseye
 
-# I think this is a bug--debian-base-setup crashes because policy-rc.d isn't
-# present in this image, and if you create it, exim crashes... do we actually NEED this? Maybe not...
-#RUN mkdir /usr/sbin/policy-rc.d
-#RUN run-parts --exit-on-error --verbose /usr/local/debian-base-setup
+# Docker + systemd cooperation
+ENV container docker
+STOPSIGNAL SIGRTMIN+3
 
-# Basic system stuff
-RUN apt-get update
-RUN apt-get install -y apt-transport-https
+# Enable SSH server
+ENV DEBBASE_SSH enabled
 
-# Install packages
+# Basic system packages
 RUN apt-get -qy update && \
     apt-get -qy install \
-        dos2unix \
-        openssh-server \
-        pwgen
+    apt-transport-https \
+    dos2unix \
+    openssh-server \
+    pwgen
+
+# Jepsen node deps
+RUN apt-get -qy update && \
+    apt-get -qy install \
+    build-essential \
+    bzip2 \
+    curl \
+    dnsutils \
+    faketime \
+    iproute2 \
+    iptables \
+    iputils-ping \
+    libzip4 \
+    logrotate \
+    man \
+    man-db \
+    net-tools \
+    ntpdate \
+    psmisc \
+    python \
+    rsyslog \
+    sudo \
+    tar \
+    unzip \
+    vim \
+    wget \
+    ca-certificates
 
 # When run, boot-debian-base will call this script, which does final
 # per-db-node setup stuff.
@@ -26,11 +50,19 @@ RUN chmod +x /usr/local/preinit/03-setup-jepsen
 # Configure SSHD
 RUN sed -i "s/#PermitRootLogin prohibit-password/PermitRootLogin yes/g" /etc/ssh/sshd_config
 
-# Enable SSH server
-ENV DEBBASE_SSH enabled
+# util script to cp control's key as authorized host for this node
+ADD ssh-dance.sh /root/ssh-dance.sh
+RUN chmod +x /root/ssh-dance.sh
 
-# Install Jepsen deps
-RUN apt-get install -qy build-essential bzip2 curl dnsutils faketime iproute2 iptables iputils-ping libzip4 logrotate man man-db net-tools ntpdate psmisc python rsyslog sudo tar unzip vim wget ca-certificates
+# Jepsen defaults use user admin with sudo
+RUN apt-get -qy update && \
+    apt-get -qy install \
+    sudo
+RUN useradd --create-home --shell /bin/bash admin && \
+    usermod -aG sudo admin
+SHELL [ "/bin/bash", "-c" ]
+RUN echo -e "admin\nadmin\n" | passwd admin
 
 EXPOSE 22
-CMD ["/usr/local/bin/boot-debian-base"]
+
+CMD [ "/usr/local/bin/boot-debian-base" ]

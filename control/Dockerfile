@@ -1,13 +1,15 @@
-FROM debian:buster
-MAINTAINER jake@apache.org
+FROM debian:bullseye
+
+# Docker + systemd cooperation
+ENV container docker
+STOPSIGNAL SIGRTMIN+3
 
 ENV LEIN_ROOT true
 
-#
-# Jepsen dependencies
-#
-RUN apt-get -y -q update && \
-    apt-get install -qy openjdk-11-jdk-headless \
+# Jepsen control dependencies
+RUN apt-get -qy update && \
+    apt-get -qy install \
+    openjdk-11-jdk-headless \
     libjna-java \
     vim \
     emacs \
@@ -28,13 +30,15 @@ RUN wget https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
 
 # without --dev flag up.sh copies jepsen to these subfolders
 # with --dev flag they are empty until mounted
-COPY jepsen/jepsen /jepsen/jepsen/
-RUN if [ -f /jepsen/jepsen/project.clj ]; then cd /jepsen/jepsen && lein install; fi
-COPY jepsen /jepsen/
+
+# TODO ???
+# COPY jepsen/jepsen /jepsen/jepsen/
+# RUN if [ -f /jepsen/jepsen/project.clj ]; then cd /jepsen/jepsen && lein install; fi
+# COPY jepsen /jepsen/
 
 ADD ./bashrc /root/.bashrc
 ADD ./init.sh /init.sh
 RUN dos2unix /init.sh /root/.bashrc \
     && chmod +x /init.sh
 
-CMD /init.sh
+CMD [ "/init.sh" ]
