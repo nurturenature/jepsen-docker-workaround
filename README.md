@@ -1,41 +1,19 @@
 # Dockerized Jepsen
 
-This docker image attempts to simplify the setup required by Jepsen.
-It is intended to be used by a CI tool or anyone with Docker who wants to try Jepsen themselves.
+This repository is a temporary work-a-round to run [Jepsen](https://github.com/jepsen-io/jepsen) in a Docker environment.
 
-It contains all the jepsen dependencies and code. It uses [Docker
-Compose](https://github.com/docker/compose) to spin up the five containers used
-by Jepsen. A script builds a `docker-compose.yml` file out of fragments in
-`template/`, because this is the future, and using `awk` to generate YAML to
-generate computers is *cloud native*.
+Current docker compose has lost, doesn't have the ability to configure systemd container's `cgroupns` correctly.
 
-## Quickstart
+Jepesen's [docker compose](https://github.com/jepsen-io/jepsen/blob/main/docker) has been decomposed into a series of individual `docker run` commands.
 
-Assuming you have docker-compose set up already, run:
+In addition, the Dockerfiles have been modified to preserve some of the original compose capabilities.
 
-```
-bin/up
-bin/console
-```
+----
 
-... which will drop you into a console on the Jepsen control node.
+### This is a substandard environment compared to the original `docker compose` and using LXC. It is driven by the necessity to share Jepsen tests.
 
-Your DB nodes are `n1`, `n2`, `n3`, `n4`, and `n5`. You can open as many shells
-as you like using `bin/console`. If your test includes a web server (try `lein
-run serve` on the control node, in your test directory), you can open it
-locally by running using `bin/web`. This can be a handy way to browse test
-results.
+----
 
-## Advanced
+## LXC Recommended
 
-You can change the number of DB nodes by running (e.g.) `bin/up -n 9`.
-
-If you need to log into a DB node (e.g. to debug a test), you can `ssh n1` (or n2, n3, ...) from inside the control node, or:
-
-```
-docker exec -it jepsen-n1 bash
-```
-
-During development, it's convenient to run with `--dev` option, which mounts `$JEPSEN_ROOT` dir as `/jepsen` on Jepsen control container.
-
-Run `./bin/up --help` for more info.
+If you are developing or running Jepsen tests in a meaningful way, [setting up](https://github.com/jepsen-io/jepsen/blob/main/doc/lxc.md) an LXC environment is recommended.

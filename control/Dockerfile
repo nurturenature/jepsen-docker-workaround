@@ -36,6 +36,10 @@ RUN wget https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
 # RUN if [ -f /jepsen/jepsen/project.clj ]; then cd /jepsen/jepsen && lein install; fi
 # COPY jepsen /jepsen/
 
+# pre-add Jepsen deps
+ADD ./project.clj /root/project.clj
+RUN cd /root && lein deps
+
 ADD ./bashrc /root/.bashrc
 ADD ./init.sh /init.sh
 RUN dos2unix /init.sh /root/.bashrc \
