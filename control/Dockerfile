@@ -28,14 +28,6 @@ RUN wget https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
     chmod +x /usr/bin/lein && \
     lein self-install
 
-# without --dev flag up.sh copies jepsen to these subfolders
-# with --dev flag they are empty until mounted
-
-# TODO ???
-# COPY jepsen/jepsen /jepsen/jepsen/
-# RUN if [ -f /jepsen/jepsen/project.clj ]; then cd /jepsen/jepsen && lein install; fi
-# COPY jepsen /jepsen/
-
 # pre-add Jepsen deps
 ADD ./project.clj /root/project.clj
 RUN cd /root && lein deps
