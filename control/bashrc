@@ -5,13 +5,14 @@ cat <<EOF
 Welcome to Jepsen on Docker
 ===========================
 
-This container runs the Jepsen tests in sub-containers.
+This is the control container that runs the Jepsen tests.
 
-You are currently in the base dir of the git repo for Jepsen.
-If you modify the core jepsen library make sure you "lein install" it so other tests can access.
+You are currently in the base dir of the git repo for jepsen-docker-workaround.
 
 To run a test:
-   cd etcd && lein run test --concurrency 10
+   
+   lein run test
+
 EOF
 
 cd /jepsen

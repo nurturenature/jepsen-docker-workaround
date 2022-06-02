@@ -42,6 +42,12 @@ RUN apt-get -qy update && \
     wget \
     ca-certificates
 
+# common packages used by nemesis, control, etc
+RUN apt-get -qy update && \
+    apt-get -qy install \
+    netcat \
+    tcpdump
+
 # When run, boot-debian-base will call this script, which does final
 # per-db-node setup stuff.
 ADD setup-jepsen.sh /usr/local/preinit/03-setup-jepsen

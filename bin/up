@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-# "To provide additional docker-compose args, set the COMPOSE var. Ex:
-# COMPOSE="-f FILE_PATH_HERE"
-
 set -o errexit
 set -o pipefail
 set -o nounset
@@ -31,11 +28,7 @@ JEPSEN_ROOT=${JEPSEN_ROOT:-""}
 pushd "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )/.."
 
 HELP=0
-INIT_ONLY=0
 NODE_COUNT=5
-DEV=""
-COMPOSE=${COMPOSE:-""}
-RUN_AS_DAEMON=0
 POSITIONAL=()
 
 while [[ $# -gt 0 ]]
@@ -45,30 +38,6 @@ do
     case $key in
         --help)
             HELP=1
-            shift # past argument
-            ;;
-        --init-only)
-            INIT_ONLY=1
-            shift # past argument
-            ;;
-        --dev)
-            if [ ! "$JEPSEN_ROOT" ]; then
-                JEPSEN_ROOT="$(cd ../ && pwd)"
-                export JEPSEN_ROOT
-                INFO "JEPSEN_ROOT is not set, defaulting to: $JEPSEN_ROOT"
-            fi
-            INFO "Running docker-compose with dev config"
-            DEV="-f docker-compose.dev.yml"
-            shift # past argument
-            ;;
-        --compose)
-            COMPOSE="-f $2"
-            shift # past argument
-            shift # past value
-            ;;
-        -d|--daemon)
-            INFO "Running docker-compose as daemon"
-            RUN_AS_DAEMON=1
             shift # past argument
             ;;
         -n|--node-count)
@@ -89,17 +58,16 @@ fi
 
 if [ "${HELP}" -eq 1 ]; then
     echo "Usage: $0 [OPTION]"
-    echo "  --help                                                Display this message"
-    echo "  --init-only                                           Initializes ssh-keys, but does not call docker-compose"
-    echo "  --daemon                                              Runs docker-compose in the background"
-    echo "  --dev                                                 Mounts dir at host's JEPSEN_ROOT to /jepsen on jepsen-control container, syncing files for development"
-    echo "  --compose PATH                                        Path to an additional docker-compose yml config."
-    echo "To provide multiple additional docker-compose args, set the COMPOSE var directly, with the -f flag. Ex: COMPOSE=\"-f FILE_PATH_HERE -f ANOTHER_PATH\" ./up.sh --dev"
+    echo "  --help              Display this message"
+    echo "  --node-count NUM    Number of nodes to bring up, default 5."
     exit 0
 fi
 
-exists ssh-keygen || { ERROR "Please install ssh-keygen (apt-get install openssh-client)"; exit 1; }
-exists perl || { ERROR "Please install perl (apt-get install perl)"; exit 1; }
+exists ssh-keygen || { ERROR "Please install ssh-keygen (apt-get install openssh-client)";
+                       exit 1; }
+exists docker ||
+    { ERROR "Please install docker (https://docs.docker.com/engine/install/)";
+      exit 1; }
 
 # always set JEPSEN_ROOT
 if [ ! "$JEPSEN_ROOT" ]; then
@@ -108,62 +76,46 @@ if [ ! "$JEPSEN_ROOT" ]; then
     INFO "JEPSEN_ROOT is not set, defaulting to: $JEPSEN_ROOT"
 fi
 
-# unwinding to individual docker commands
+# unwinding Jepsen's original compose to individual docker commands
 
-exists docker ||
-    { ERROR "Please install docker (https://docs.docker.com/engine/install/)";
-      exit 1; }
-
-# stop containers
-INFO "stop containers"
+INFO "Stopping containers..."
 docker stop jepsen_control || INFO "jepsen_control container not running" 
 for ((n=1;n<=NODE_COUNT;n++)); do
     docker stop jepsen_n${n} || INFO "jepsen_n${n} container not running"
 done
 
-# rm containers
-INFO "rm containers"
+INFO "rm containers..."
 docker rm --force --volumes jepsen_control || INFO "jepsen_control container doesn't exist"
 for ((n=1;n<=NODE_COUNT;n++)); do
     docker rm --force --volumes jepsen_n${n} || INFO "jepsen_n${n} container doesn't exist"
 done
 
-# rm network
 INFO "rm network"
 docker network rm jepsen_network || INFO "jepsen_network network doesn't exist"
 
-# rm volumes
 INFO "rm volume"
 docker volume rm jepsen_shared || INFO "jepsen_shared volume doesn't exist"
 
-# build control image
-INFO "building control image"
+INFO "Building control image..."
 pushd "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )/../control"
 docker build --tag jepsen_control .
 popd
 
-# build node image
-INFO "building node image"
+INFO "Building node image..."
 pushd "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )/../node"
 docker build --tag jepsen_node .
 popd
 
-# create volume
-INFO "creating volume"
+INFO "Creating volume"
 docker volume create jepsen_shared || { ERROR "failed to create jepsen_shared volume";
                                         exit 1; }
 
-# create network
-INFO "creating network"
+INFO "Creating network"
 docker network create jepsen_network || { ERROR "failed to create jepsen_network network";
                                           exit 1; }
 
 # run images in containers
 
-# TODO?
-#   --cap-add all
-#   --privileged
-# crashes host, needs power cycle
 INFO "Starting control..."
 docker run \
     --detach \
@@ -172,6 +124,7 @@ docker run \
     --hostname control \
     --name jepsen_control \
     --network jepsen_network \
+    -p 127.0.0.1::8080 \
     --stop-signal SIGRTMIN+3 \
     --tmpfs /run:size=100M \
     --tmpfs /run/lock:size=100M \
@@ -181,16 +134,18 @@ docker run \
     jepsen_control
 
 # TODO?
-#   --cap-add all
-#   --privileged
-# crashes host, needs power cycle
+#   --cap-add ALL # needed for Jepsen nemesis, but causes mount priviledge errors in boot log
+#   --privileged  # crashes host, needs power cycle
 INFO "Starting nodes..."
 for ((n=1;n<=NODE_COUNT;n++)); do
     docker run \
+        --cap-add ALL \
         --cgroupns host \
         --detach \
         --env ROOT_PASS=root \
         --expose 22 \
+        --expose 3001 \
+        --expose 8087 \
         --hostname n${n} \
         --name jepsen_n${n} \
         --network jepsen_network \
@@ -203,11 +158,10 @@ for ((n=1;n<=NODE_COUNT;n++)); do
         jepsen_node
 done
 
-INFO "sleeping to let docker run --detach bring up all containers"
+INFO "Sleeping to let docker run bring up all containers..."
 sleep 5 
 
-# create ssh keys
-INFO "creating ssh keys in containers"
+INFO "Creating ssh keys in containers..."
 docker exec \
     --tty \
     jepsen_control \
@@ -229,7 +183,7 @@ done
 
 # cp control's key to shared location,
 # have all nodes trust it
-INFO "ssh key dance"
+INFO "ssh key dance..."
 docker exec \
     --tty \
     jepsen_control \
@@ -243,7 +197,7 @@ docker exec \
     /root/ssh-dance.sh
 done
 
-# make all nodes known_hosts to the control node
+# make all nodes a known host to the control node
 docker exec \
     --tty \
     jepsen_control \
@@ -255,8 +209,7 @@ for ((n=1;n<=NODE_COUNT;n++)); do
         sh -c "ssh-keyscan -t rsa n${n} >> /root/.ssh/known_hosts && ssh-keyscan -t ed25519 n${n} >> /root/.ssh/known_hosts"
 done
 
-# root/root on nodes
-INFO "setting root password to root on nodes"
+INFO "Setting root password to root on nodes..."
 for ((n=1;n<=NODE_COUNT;n++)); do
     docker exec \
         --tty \
@@ -265,92 +218,15 @@ for ((n=1;n<=NODE_COUNT;n++)); do
 done
 
 # each node added itself to shared file on boot
-INFO "creating control:/root/nodes"
+INFO "Creating control:/root/nodes"
 docker exec \
     --tty \
     jepsen_control \
     bash -c "sort -V /var/jepsen/shared/nodes > /root/nodes"
 
-exit 0
-
-
-# Generate SSH keys for the control node
-if [ ! -f ./secret/node.env ]; then
-    INFO "Generating key pair"
-    mkdir -p secret
-    ssh-keygen -t rsa -N "" -f ./secret/id_rsa
-
-    INFO "Generating ./secret/control.env"
-    { echo "# generated by jepsen/docker/up.sh, parsed by jepsen/docker/control/bashrc";
-      echo "# NOTE: newline is expressed as ↩";
-      echo "SSH_PRIVATE_KEY=$(perl -p -e "s/\n/↩/g" < ./secret/id_rsa)";
-      echo "SSH_PUBLIC_KEY=$(cat ./secret/id_rsa.pub)"; } >> ./secret/control.env
-
-    INFO "Generating authorized_keys"
-    { echo "# generated by jepsen/docker/up.sh";
-      echo "$(cat ./secret/id_rsa.pub)"; } >> ./secret/authorized_keys
-
-    INFO "Generating ./secret/node.env"
-    { echo "# generated by jepsen/docker/up.sh, parsed by the \"tutum/debian\" docker image entrypoint script";
-      echo "ROOT_PASS=root"; } >> ./secret/node.env
-else
-    INFO "No need to generate key pair"
-fi
-
-
-## Build dockerfile
-bin/build-docker-compose "${NODE_COUNT}"
-
-# Make sure folders referenced in control Dockerfile exist and don't contain leftover files
-rm -rf ./control/jepsen
-mkdir -p ./control/jepsen/jepsen
-# Copy the jepsen directory if we're not mounting the JEPSEN_ROOT
-if [ -z "${DEV}" ]; then
-    exclude_params=(
-        --exclude=./docker
-        --exclude=./.git
-    )
-    case $(uname) in
-        Linux)
-            exclude_params+=(--exclude-ignore=.gitignore)
-            ;;
-    esac
-    # Dockerfile does not allow `ADD ..`. So we need to copy it here in setup.
-    INFO "Copying .. to control/jepsen"
-    (
-        (cd ..; tar "${exclude_params[@]}" -cf - .)  | tar Cxf ./control/jepsen -
-        cp ../jepsen/src/jepsen/store/* ./control/jepsen/jepsen/src/jepsen/store/
-    )
-fi
-
-if [ "${INIT_ONLY}" -eq 1 ]; then
-    exit 0
-fi
-
-exists docker ||
-    { ERROR "Please install docker (https://docs.docker.com/engine/installation/)";
-      exit 1; }
-exists docker-compose ||
-    { ERROR "Please install docker-compose (https://docs.docker.com/compose/install/)";
-      exit 1; }
-
-INFO "Running \`docker-compose build\`"
-# shellcheck disable=SC2086
-docker-compose --compatibility -p jepsen -f docker-compose.yml ${COMPOSE} ${DEV} build
-
-# We need a fresh share volume each time we start, so we have a correct set of
-# DB hosts. Why does Docker make sharing state SO hard
-docker run --rm -v jepsen_jepsen-shared:/data/ debian:buster rm /data/nodes || true
-
-INFO "Running \`docker-compose up\`"
-if [ "${RUN_AS_DAEMON}" -eq 1 ]; then
-    # shellcheck disable=SC2086
-    docker-compose --compatibility -p jepsen -f docker-compose.yml ${COMPOSE} ${DEV} up -d
-    INFO "All containers started! Run \`docker ps\` to view, and \`bin/console\` to get started."
-else
-    INFO "Please run \`bin/console\` in another terminal to proceed"
-    # shellcheck disable=SC2086
-    docker-compose --compatibility -p jepsen -f docker-compose.yml ${COMPOSE} ${DEV} up
-fi
+echo
+INFO "To connect to Jepsen's control node:"
+INFO "$ bin/console"
+echo
 
 popd
