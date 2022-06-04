@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+INFO() {
+    printf "\e[104m\e[97m[INFO]\e[49m\e[39m %s\n" "$@"
+}
+
+# Change directory to the parent directory of this script. Taken from:
+# https://stackoverflow.com/a/246128/3858681
+pushd "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )/.."
+
+JEPSEN_ROOT="$(pwd)"
+export JEPSEN_ROOT
+INFO "JEPSEN_ROOT: $JEPSEN_ROOT"
+
+
+INFO "rm build container, image..."
+docker rm  --force jepsen_db || INFO "jepsen_db container doesn't exist"
+docker rmi --force jepsen_db || INFO "jepsen_db image doesn't exist"
+
+INFO "Building image with fuzz_dist and AntidoteDB..."
+pushd "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )/../db"
+docker build --tag jepsen_db .
+popd
+
+INFO "Copying fuzz_dist and Antidote builds to host filesystem..."
+rm -rf $JEPSEN_ROOT/_build
+mkdir  $JEPSEN_ROOT/_build
+docker run \
+    --name jepsen_db \
+    --rm \
+    --stop-signal SIGRTMIN+3 \
+    --tty \
+    --volume $JEPSEN_ROOT/_build:/release-dir \
+    jepsen_db \
+    bash -c /root/build-db
+
+popd

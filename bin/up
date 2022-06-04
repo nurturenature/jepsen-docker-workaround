@@ -145,7 +145,10 @@ for ((n=1;n<=NODE_COUNT;n++)); do
         --env ROOT_PASS=root \
         --expose 22 \
         --expose 3001 \
+        --expose 8085 \
+        --expose 8086 \
         --expose 8087 \
+        --expose 8099 \
         --hostname n${n} \
         --name jepsen_n${n} \
         --network jepsen_network \

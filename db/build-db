@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+# Build fuzz_dist & AntidoteDB into mounted volume:
+#   /release-dir           # <- mount to dir on host
+#   /release-dir/fuzz_dist # <- built release
+#   /release-dir/antidote  # <- built release
+
+INFO() {
+    printf "\e[104m\e[97m[INFO]\e[49m\e[39m %s\n" "$@"
+}
+
+# build target
+RELEASE_DIR="/release-dir"
+
+# git repostiroy to be used
+ANTIDOTE_REPO="https://github.com/AntidoteDB/antidote"
+
+# TARGET can be a branch name or release tag
+ANTIDOTE_REPO_TARGET="master"
+
+# build into /antidote-src directory
+git clone -b "${ANTIDOTE_REPO_TARGET}" --single-branch --depth 1 "${ANTIDOTE_REPO}" /antidote-src
+cd /antidote-src && make rel
+
+# cp release into /antidote directory
+cp -R /antidote-src/_build/default/rel/antidote "${RELEASE_DIR}"/antidote/
+rm -rf antidote-src
+
+
+# git repostiroy to be used
+FUZZ_DIST_REPO="https://github.com/nurturenature/fuzz_dist.git"
+
+# TARGET can be a branch name or release tag
+FUZZ_DIST_REPO_TARGET="main"
+
+# build into /fuzz_dist-src directory
+git clone -b "${FUZZ_DIST_REPO_TARGET}" --single-branch --depth 1 "${FUZZ_DIST_REPO}" /fuzz_dist-src
+cd /fuzz_dist-src/beam.fuzz_dist && \
+    mix setup && \
+    mix releasey
+
+# cp release into /fuzz_dist directory
+cp -R /fuzz_dist-src/beam.fuzz_dist/_build/prod/rel/fuzz_dist "${RELEASE_DIR}"/fuzz_dist/
+# cp Jepsen tests into /fuzz_dist directory
+cp -R /fuzz_dist-src/jepsen.fuzz_dist "${RELEASE_DIR}"/fuzz_dist/
+rm -rf fuzz_dist-src
