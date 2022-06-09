@@ -21,6 +21,7 @@ If you are developing or running Jepsen tests in a meaningful way, [setting up](
 ----
 ## Demo
 
+Host terminal:
 ```bash
 # build a release of AntidoteDB and the fuzz_dist client
 bin/build-db
@@ -30,4 +31,31 @@ bin/up
 
 # open a terminal on the control node
 bin/console
+```
+
+On the control node:
+```bash
+# run a simple test
+lein run test
+
+# run a series of tests
+lein run test-all
+```
+
+Bring up a web server for the test results:
+```bash
+# from a host terminal:
+# open a terminal on the control node
+bin/console
+
+# and on the control node:
+# run a web server for test results
+lein run serve
+```
+
+Browse test results:
+```bash
+# from a host terminal:
+# open a browser window to the control node's web server
+bin/web
 ```

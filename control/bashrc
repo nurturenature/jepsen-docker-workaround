@@ -2,16 +2,21 @@ eval $(ssh-agent) &> /dev/null
 ssh-add /root/.ssh/id_rsa &> /dev/null
 
 cat <<EOF
-Welcome to Jepsen on Docker
-===========================
+Welcome to the Jepsen on Docker Workaround
+==========================================
 
 This is the control container that runs the Jepsen tests.
 
-You are currently in the base dir of the git repo for jepsen-docker-workaround.
+You are currently in the build dir made by bin/build-db.
 
-To run a test:
-   
-   lein run test
+# run a simple sample test
+lein run test
+
+# run a series of tests
+lein run test-all
+
+# run a webserver for test results (leave terminal open)
+lein run serve
 
 EOF
 
