@@ -71,30 +71,15 @@ exists docker ||
 
 # always set JEPSEN_ROOT
 if [ ! "$JEPSEN_ROOT" ]; then
-    JEPSEN_ROOT="$(pwd)"
+    JEPSEN_ROOT="$(pwd)"/_build
     export JEPSEN_ROOT
     INFO "JEPSEN_ROOT is not set, defaulting to: $JEPSEN_ROOT"
 fi
 
 # unwinding Jepsen's original compose to individual docker commands
 
-INFO "Stopping containers..."
-docker stop jepsen_control || INFO "jepsen_control container not running" 
-for ((n=1;n<=NODE_COUNT;n++)); do
-    docker stop jepsen_n${n} || INFO "jepsen_n${n} container not running"
-done
-
-INFO "rm containers..."
-docker rm --force --volumes jepsen_control || INFO "jepsen_control container doesn't exist"
-for ((n=1;n<=NODE_COUNT;n++)); do
-    docker rm --force --volumes jepsen_n${n} || INFO "jepsen_n${n} container doesn't exist"
-done
-
-INFO "rm network"
-docker network rm jepsen_network || INFO "jepsen_network network doesn't exist"
-
-INFO "rm volume"
-docker volume rm jepsen_shared || INFO "jepsen_shared volume doesn't exist"
+INFO "Cleaning up with bin/down..."
+bin/down --node-count "${NODE_COUNT}"
 
 INFO "Building control image..."
 pushd "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )/../control"

@@ -42,5 +42,5 @@ cd /fuzz_dist-src/beam.fuzz_dist && \
 # cp release into /fuzz_dist directory
 cp -R /fuzz_dist-src/beam.fuzz_dist/_build/prod/rel/fuzz_dist "${RELEASE_DIR}"/fuzz_dist/
 # cp Jepsen tests into /fuzz_dist directory
-cp -R /fuzz_dist-src/jepsen.fuzz_dist "${RELEASE_DIR}"/fuzz_dist/
+cp -R /fuzz_dist-src/jepsen.fuzz_dist/* "${RELEASE_DIR}"/
 rm -rf fuzz_dist-src
