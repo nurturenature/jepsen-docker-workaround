@@ -1,37 +1,116 @@
 #!/usr/bin/env bash
 
+ERROR() {
+    printf "\e[101m\e[97m[ERROR]\e[49m\e[39m %s\n" "$@"
+}
+
+WARNING() {
+    printf "\e[101m\e[97m[WARNING]\e[49m\e[39m %s\n" "$@"
+}
+
 INFO() {
     printf "\e[104m\e[97m[INFO]\e[49m\e[39m %s\n" "$@"
+}
+
+exists() {
+    type "$1" > /dev/null 2>&1
 }
 
 # Change directory to the parent directory of this script. Taken from:
 # https://stackoverflow.com/a/246128/3858681
 pushd "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )/.."
 
-JEPSEN_ROOT="$(pwd)"
-export JEPSEN_ROOT
-INFO "JEPSEN_ROOT: $JEPSEN_ROOT"
+HELP=0
+POSITIONAL=()
+ANTIDOTE_SRC=""
+FUZZ_DIST_SRC=""
 
+while [[ $# -gt 0 ]]
+do
+    key="$1"
 
-INFO "rm build container, image..."
+    case $key in
+        --help)
+            HELP=1
+            shift # past argument
+            ;;
+        --antidote-src)
+            ANTIDOTE_SRC=$2
+            shift
+            shift
+            ;;
+        --fuzz-dist-src)
+            FUZZ_DIST_SRC=$2
+            shift
+            shift
+            ;;
+        *)
+            POSITIONAL+=("$1")
+            ERROR "unknown option $1"
+            shift # past argument
+            ;;
+    esac
+done
+if [ "${#POSITIONAL[@]}" -gt 0 ]; then
+  set -- "${POSITIONAL[@]}" # restore positional parameters
+fi
+
+if [ "${HELP}" -eq 1 ]; then
+    echo "Usage: $0 [OPTION]"
+    echo "  --help             Display this message"
+    echo "  --antidote-src     Local dir with AntidoteDB source, default is git clone"
+    echo "  --fuzz-dist-src    Local dir with fuzz_dist  source, default is git clone"
+    exit 0
+fi
+
+exists docker ||
+    { ERROR "Please install docker (https://docs.docker.com/engine/install/)";
+      exit 1; }
+
+INFO "Removing build container, image..."
 docker rm  --force jepsen_db || INFO "jepsen_db container doesn't exist"
 docker rmi --force jepsen_db || INFO "jepsen_db image doesn't exist"
 
-INFO "Building image with fuzz_dist and AntidoteDB..."
+INFO "Insure jepsen_dev volume exists..."
+docker volume create jepsen_dev || WARNING "failed to create jepsen_dev volume, already exists?"
+
+INFO "Building image for building fuzz_dist and AntidoteDB..."
 pushd "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )/../db"
 docker build --tag jepsen_db .
 popd
 
-INFO "Copying fuzz_dist and Antidote builds to host filesystem..."
-rm -rf $JEPSEN_ROOT/_build
-mkdir  $JEPSEN_ROOT/_build
+if [ ! "${ANTIDOTE_SRC}" ]; then
+    INFO "Building AntidoteDB from git clone..."
+    ANTIDOTE_SRC_MOUNT=""
+else
+    INFO "Building AntidoteDB from ${ANTIDOTE_SRC}"
+    ANTIDOTE_SRC_MOUNT="--volume ${ANTIDOTE_SRC}:/jepsen/antidote-src:ro"
+fi
+
+if [ ! "${FUZZ_DIST_SRC}" ]; then
+    INFO "Building fuzz_dist from git clone..."
+    FUZZ_DIST_SRC_MOUNT=""
+else
+    INFO "Building fuzz_dist from ${FUZZ_DIST_SRC}"
+    FUZZ_DIST_SRC_MOUNT="--volume ${FUZZ_DIST_SRC}:/jepsen/fuzz_dist-src:ro"
+fi
+
+INFO "Building applications fuzz_dist and AntidoteDB from source..."
 docker run \
+    --env ANTIDOTE_SRC="${ANTIDOTE_SRC}" \
+    --env FUZZ_DIST_SRC="${FUZZ_DIST_SRC}" \
     --name jepsen_db \
     --rm \
     --stop-signal SIGRTMIN+3 \
     --tty \
-    --volume $JEPSEN_ROOT/_build:/release-dir \
+    --volume jepsen_dev:/jepsen \
+    ${ANTIDOTE_SRC_MOUNT} \
+    ${FUZZ_DIST_SRC_MOUNT} \
     jepsen_db \
     bash -c /root/build-db
+
+echo
+INFO "fuzz_dist and AntidoteDB built to Docker volume jepsen_dev"
+echo
 
 popd

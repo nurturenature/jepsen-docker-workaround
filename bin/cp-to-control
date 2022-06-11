@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+
+ERROR() {
+    printf "\e[101m\e[97m[ERROR]\e[49m\e[39m %s\n" "$@"
+}
+
+WARNING() {
+    printf "\e[101m\e[97m[WARNING]\e[49m\e[39m %s\n" "$@"
+}
+
+INFO() {
+    printf "\e[104m\e[97m[INFO]\e[49m\e[39m %s\n" "$@"
+}
+
+exists() {
+    type "$1" > /dev/null 2>&1
+}
+
+HELP=0
+POSITIONAL=()
+CP_FROM=""
+CP_TO=""
+
+while [[ $# -gt 0 ]]
+do
+    key="$1"
+
+    case $key in
+        --help)
+            HELP=1
+            shift # past argument
+            ;;
+        --cp-from)
+            CP_FROM=$2
+            shift
+            shift
+            ;;
+        --cp-to)
+            CP_TO=$2
+            shift
+            shift
+            ;;
+        *)
+            POSITIONAL+=("$1")
+            ERROR "unknown option $1"
+            shift # past argument
+            ;;
+    esac
+done
+if [ "${#POSITIONAL[@]}" -gt 0 ]; then
+  set -- "${POSITIONAL[@]}" # restore positional parameters
+fi
+
+if [ "${HELP}" -eq 1 ]; then
+    echo "Usage: $0 [OPTION]"
+    echo "  --help       Display this message"
+    echo "  --cp-from    /full/path/to/local/dir to copy and be made available to the control node"
+    echo "  --cp-to      Name of directory to use on control node"
+    exit 0
+fi
+
+if [ ! "${CP_FROM}" ]; then
+    ERROR "Missing required parm --cp-from"
+    ERROR "bin/cp-to-control --help"
+    exit 1
+fi
+
+if [ ! "${CP_TO}" ]; then
+    ERROR "Missing required parm --cp-to"
+    ERROR "bin/cp-to-control --help"
+    exit 1
+fi
+
+exists docker ||
+    { ERROR "Please install docker (https://docs.docker.com/engine/install/)";
+      exit 1; }
+
+INFO "Insure jepsen_dev volume exists..."
+docker volume create jepsen_dev || WARNING "failed to create jepsen_dev volume, already exists?"
+
+INFO "Copying ${CP_FROM} to Docker volume jepsen_dev, will be available on control node as /jepsen/${CP_TO}..."
+docker run \
+    --name jepsen_dev \
+    --rm \
+    --stop-signal SIGRTMIN+3 \
+    --tty \
+    --volume jepsen_dev:/jepsen \
+    --volume ${CP_FROM}:/jepsen/cp-from \
+    debian:bullseye \
+    bash -c "mkdir /jepsen/${CP_TO}; cp -r /jepsen/cp-from/* /jepsen/${CP_TO}"
