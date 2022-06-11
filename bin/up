@@ -91,9 +91,10 @@ pushd "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )/../node
 docker build --tag jepsen_node .
 popd
 
-INFO "Creating volume"
+INFO "Creating volumes..."
 docker volume create jepsen_shared || { ERROR "failed to create jepsen_shared volume";
                                         exit 1; }
+docker volume create jepsen_dev    || WARNING "failed to create jepsen_dev volume, already exists?"
 
 INFO "Creating network"
 docker network create jepsen_network || { ERROR "failed to create jepsen_network network";
@@ -115,12 +116,18 @@ docker run \
     --tmpfs /run/lock:size=100M \
     --tty \
     --volume jepsen_shared:/var/jepsen/shared \
-    --volume ${JEPSEN_ROOT}:/jepsen:rw \
+    --volume jepsen_dev:/jepsen \
     jepsen_control
 
 # TODO?
 #   --cap-add ALL # needed for Jepsen nemesis, but causes mount priviledge errors in boot log
 #   --privileged  # crashes host, needs power cycle
+#
+# Expose all ports?!?
+#   3001, 808*, 8099 <- AntidoteDB
+#   2701*            <- MongoDB
+#   2379,80, 4001    <- etcd
+
 INFO "Starting nodes..."
 for ((n=1;n<=NODE_COUNT;n++)); do
     docker run \
@@ -129,11 +136,16 @@ for ((n=1;n<=NODE_COUNT;n++)); do
         --detach \
         --env ROOT_PASS=root \
         --expose 22 \
+        --expose 2379 \
+        --expose 2380 \
         --expose 3001 \
+        --expose 4001 \
         --expose 8085 \
         --expose 8086 \
         --expose 8087 \
         --expose 8099 \
+        --expose 27017 \
+        --expose 27018 \
         --hostname n${n} \
         --name jepsen_n${n} \
         --network jepsen_network \
@@ -214,7 +226,8 @@ docker exec \
 
 echo
 INFO "To connect to Jepsen's control node:"
-INFO "$ bin/console"
+INFO ""
+INFO "bin/control"
 echo
 
 popd

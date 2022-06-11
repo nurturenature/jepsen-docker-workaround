@@ -28,9 +28,11 @@ RUN wget https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
     chmod +x /usr/bin/lein && \
     lein self-install
 
-# pre-add Jepsen deps
-ADD ./project.clj /root/project.clj
-RUN cd /root && lein deps
+# pre-add Jepsen
+RUN git clone -b "main" --single-branch --depth 1 "https://github.com/jepsen-io/jepsen.git" /jepsen-src && \
+    cd /jepsen-src/jepsen && \
+    lein install && \
+    rm -rf /jepsen-src
 
 ADD ./bashrc /root/.bashrc
 ADD ./init.sh /init.sh

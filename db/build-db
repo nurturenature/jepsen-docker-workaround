@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
 
 # Build fuzz_dist & AntidoteDB into mounted volume:
-#   /release-dir           # <- mount to dir on host
-#   /release-dir/fuzz_dist # <- built release
-#   /release-dir/antidote  # <- built release
+#   /jepsen           # <- mounted docker volume
+#   /jepsen/fuzz_dist # <- built release
+#                          Jepsen tests
+#   /jepsen/antidote  # <- built release
+#
+# fuzz_dist src is copied from FUZZ_DIST_SRC if set, or git clone
+# AntidoteDB src is copied from ANTIDOTE_SRC if set, or git clone
 
 INFO() {
     printf "\e[104m\e[97m[INFO]\e[49m\e[39m %s\n" "$@"
 }
 
 # build target
-RELEASE_DIR="/release-dir"
+RELEASE_DIR="/jepsen"
 
 # git repostiroy to be used
 ANTIDOTE_REPO="https://github.com/AntidoteDB/antidote"
@@ -18,14 +22,22 @@ ANTIDOTE_REPO="https://github.com/AntidoteDB/antidote"
 # TARGET can be a branch name or release tag
 ANTIDOTE_REPO_TARGET="master"
 
+# get source from user supplied dir, --antidote-src, or git
+if [ ! "$ANTIDOTE_SRC" ]; then
+    INFO "ANTIDOTE_SRC is not set, cloning source from git..."
+    git clone -b "${ANTIDOTE_REPO_TARGET}" --single-branch --depth 1 "${ANTIDOTE_REPO}" /antidote-src
+else
+    INFO "ANTIDOTE_SRC is set, copying source from mounted local dir..."
+    mkdir /antidote-src
+    cp -r /jepsen/antidote-src/* /antidote-src
+fi
+
 # build into /antidote-src directory
-git clone -b "${ANTIDOTE_REPO_TARGET}" --single-branch --depth 1 "${ANTIDOTE_REPO}" /antidote-src
 cd /antidote-src && make rel
 
-# cp release into /antidote directory
+# cp release into RELEASE_DIR/antidote
 cp -R /antidote-src/_build/default/rel/antidote "${RELEASE_DIR}"/antidote/
-rm -rf antidote-src
-
+rm -rf /antidote-src
 
 # git repostiroy to be used
 FUZZ_DIST_REPO="https://github.com/nurturenature/fuzz_dist.git"
@@ -33,14 +45,23 @@ FUZZ_DIST_REPO="https://github.com/nurturenature/fuzz_dist.git"
 # TARGET can be a branch name or release tag
 FUZZ_DIST_REPO_TARGET="main"
 
+# get source from user supplied dir, --fuzz-dist-src, or git
+if [ ! "$FUZZ_DIST_SRC" ]; then
+    INFO "FUZZ_DIST_SRC is not set, cloning source from git..."
+    git clone -b "${FUZZ_DIST_REPO_TARGET}" --single-branch --depth 1 "${FUZZ_DIST_REPO}" /fuzz_dist-src
+else
+    INFO "FUZZ_DIST_SRC is set, copying source from mounted local dir..."
+    mkdir /fuzz_dist-src
+    cp -r /jepsen/fuzz_dist-src/* /fuzz_dist-src
+fi
+
 # build into /fuzz_dist-src directory
-git clone -b "${FUZZ_DIST_REPO_TARGET}" --single-branch --depth 1 "${FUZZ_DIST_REPO}" /fuzz_dist-src
 cd /fuzz_dist-src/beam.fuzz_dist && \
     mix setup && \
     mix releasey
 
-# cp release into /fuzz_dist directory
+# cp release into RELEASE_DIR/fuzz_dist
 cp -R /fuzz_dist-src/beam.fuzz_dist/_build/prod/rel/fuzz_dist "${RELEASE_DIR}"/fuzz_dist/
-# cp Jepsen tests into /fuzz_dist directory
+# cp Jepsen tests into RELEASE_DIR
 cp -R /fuzz_dist-src/jepsen.fuzz_dist/* "${RELEASE_DIR}"/
-rm -rf fuzz_dist-src
+rm -rf /fuzz_dist-src

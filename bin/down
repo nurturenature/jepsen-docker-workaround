@@ -76,5 +76,8 @@ done
 INFO "rm network"
 docker network rm jepsen_network || INFO "jepsen_network network doesn't exist"
 
-INFO "rm volume"
+INFO "rm volume jepsen_shared"
 docker volume rm jepsen_shared || INFO "jepsen_shared volume doesn't exist"
+
+WARNING "Leaving jepsen_dev Docker volume as is:"
+docker volume inspect jepsen_dev || INFO "jepsen_dev volume doesn't exist"
