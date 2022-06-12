@@ -37,6 +37,10 @@ cd /antidote-src && make rel
 
 # cp release into RELEASE_DIR/antidote
 cp -R /antidote-src/_build/default/rel/antidote "${RELEASE_DIR}"/antidote/
+# TODO: working around a mix :get :sparse slowness, so stage fuzz_dist deps
+cp -R /antidote-src/apps/antidote_pb_codec "${RELEASE_DIR}"/antidote/
+cp -R /antidote-src/apps/antidotec_pb "${RELEASE_DIR}"/antidote/
+cd /
 rm -rf /antidote-src
 
 # git repostiroy to be used
@@ -64,4 +68,5 @@ cd /fuzz_dist-src/beam.fuzz_dist && \
 cp -R /fuzz_dist-src/beam.fuzz_dist/_build/prod/rel/fuzz_dist "${RELEASE_DIR}"/fuzz_dist/
 # cp Jepsen tests into RELEASE_DIR
 cp -R /fuzz_dist-src/jepsen.fuzz_dist/* "${RELEASE_DIR}"/
+cd /
 rm -rf /fuzz_dist-src
