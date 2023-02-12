@@ -32,7 +32,15 @@ RUN wget https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
 RUN git clone -b "main" --single-branch --depth 1 "https://github.com/jepsen-io/jepsen.git" /jepsen-src && \
     cd /jepsen-src/jepsen && \
     lein install && \
+    cd ~ && \
     rm -rf /jepsen-src
+
+# pre-add fuzz_dist
+RUN git clone -b "main" --single-branch --depth 1 "https://github.com/nurturenature/fuzz_dist.git" /fuzz_dist-src && \
+    cd /fuzz_dist-src/jepsen.fuzz_dist && \
+    lein install && \
+    cd ~ && \
+    rm -rf /fuzz_dist-src
 
 ADD ./bashrc /root/.bashrc
 ADD ./init.sh /init.sh
