@@ -1,5 +1,15 @@
 # Jepsen in Docker Workaround
 
+## This repository is no longer needed.
+
+### `docker compose` can now configure OS/systemd containers correctly, which Jepsen and others use.
+
+# Please see [Dockerized Jepsen](https://github.com/jepsen-io/jepsen/tree/main/docker) at [jepsen-io/jepsen](https://github.com/jepsen-io/jepsen).
+
+----
+
+----
+
 This repository is a temporary workaround to run [Jepsen](https://github.com/jepsen-io/jepsen) in a Docker environment.
 
 Current `docker compose` [doesn't have the ability](https://github.com/docker/compose/issues/8167) to [configure](https://github.com/docker/compose/issues/9457) systemd container's `cgroupns` correctly. `docker run` can configure the containers correctly.
